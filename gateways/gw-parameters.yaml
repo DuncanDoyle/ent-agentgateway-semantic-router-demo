@@ -1,0 +1,8 @@
+apiVersion: enterpriseagentgateway.solo.io/v1alpha1
+kind: EnterpriseAgentgatewayParameters
+metadata:
+  name: custom-gw-params
+  namespace: agentgateway-system
+spec:
+  logging:
+    level: info
