@@ -26,4 +26,4 @@ curl -s http://api.example.com/semantic-router \
     ],
     "max_tokens": 64,
     "temperature": 0
-  }'
+  }' | jq .
