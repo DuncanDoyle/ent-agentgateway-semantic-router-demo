@@ -12,3 +12,4 @@ spec:
       openai: {}
       host: vllm-llama3-8b-instruct.default.svc.cluster.local
       port: 8000
+      path: /v1/chat/completions
