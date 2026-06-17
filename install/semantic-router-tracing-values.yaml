@@ -1,10 +1,22 @@
-# Helm values overlay — enables OTEL tracing in the vLLM Semantic Router.
+# Helm values overlay — enables OTEL tracing in the vLLM Semantic Router
+# and reduces resource requests for single-node demo clusters.
 # Apply on top of the base values with:
 #   helm upgrade semantic-router ... -f semantic-router-values.yaml -f semantic-router-tracing-values.yaml
 #
 # Traces are sent to the OTEL Collector in the telemetry namespace, which
 # forwards them to Tempo. View them in Grafana alongside agentgateway spans
 # to get end-to-end traces across the full request pipeline.
+
+# Reduce from the default 1 CPU / 3Gi requests so the pod schedules on a
+# single-node demo cluster alongside agentgateway and the observability stack.
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: 1
+    memory: 2Gi
+
 config:
   global:
     services:
