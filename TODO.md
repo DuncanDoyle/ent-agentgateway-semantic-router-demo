@@ -23,6 +23,16 @@ kubectl create secret generic hf-token-secret \
 
 ---
 
+## Planned features
+
+### Semantic Router-driven LLM provider selection (replaces weighted HTTPRoute)
+
+Currently `/llm` uses a 50/50 weighted HTTPRoute between OpenAI and Gemini. The goal is to have the vLLM Semantic Router make the provider selection decision based on prompt domain classification (e.g. analytical domains → OpenAI, language-heavy domains → Gemini), with cost-optimised model selection in the plugin chain.
+
+See `docs/design-semantic-router-llm-routing.md` for the full design.
+
+---
+
 ## Known issues
 
 ### vLLM Semantic Router OTEL tracing not emitting spans
