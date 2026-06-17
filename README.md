@@ -4,6 +4,7 @@ A minimal demo environment for Solo Enterprise for agentgateway with two use-cas
 
 - **Ingress** — exposes an HTTPBin backend at `http://api.example.com/`
 - **LLM consumption** — weighted 50/50 routing between OpenAI (`gpt-4o-mini`) and Gemini (`gemini-2.5-flash-lite`) at `http://api.example.com/llm`
+- **vLLM Semantic Router** — prompt classification via [vLLM Semantic Router](https://vllm-semantic-router.com/docs/installation/k8s/agentgateway/) selecting a LoRA adapter at `http://api.example.com/semantic-router`
 
 ## Prerequisites
 
@@ -43,7 +44,19 @@ This deploys:
 - `ReferenceGrant` allowing routing from `agentgateway-system` to `httpbin`
 - `HTTPRoute` for `api.example.com`
 
-### Step 4 — Deploy the LLM consumption use-case
+### Step 4 — Deploy the vLLM Semantic Router use-case
+
+```bash
+./setup-semantic-router.sh
+```
+
+This installs Semantic Router via Helm and deploys:
+- vLLM simulator (`llm-d-inference-sim`) in the `default` namespace, serving `base-model` + 6 LoRA adapters (`math-expert`, `science-expert`, etc.)
+- `AgentgatewayBackend` pointing to the vLLM simulator (no model set — Semantic Router injects it)
+- `HTTPRoute` on `api.example.com/semantic-router`
+- `AgentgatewayPolicy` attaching Semantic Router as an ExtProc server to the gateway (gRPC on port 50051)
+
+### Step 5 — Deploy the LLM consumption use-case
 
 ```bash
 export OPENAI_API_KEY=<your-openai-api-key>
@@ -86,6 +99,20 @@ The `model` field in the response body shows which backend handled the request. 
 {"model": "gemini-2.5-flash-lite", "content": "Hello."}
 ```
 
+### vLLM Semantic Router
+
+```bash
+./curl-semantic-router-request.sh
+```
+
+Semantic Router classifies the prompt and sets the model to the appropriate LoRA adapter. The `model` field in the response shows which expert was selected:
+
+```json
+{"model": "math-expert", "content": "The derivative of f(x) = x^3 is 3x^2."}
+```
+
+Try different prompts to exercise different adapters (math, science, social, humanities, law, general).
+
 ## Structure
 
 ```
@@ -100,18 +127,23 @@ agentgateway-demo-2/
 │   └── gw.yaml                              # Gateway (enterprise-agentgateway class)
 ├── backends/
 │   ├── openai-backend.yaml                  # AgentgatewayBackend for OpenAI gpt-4o-mini
-│   └── gemini-backend.yaml                  # AgentgatewayBackend for Gemini gemini-2.5-flash-lite
+│   ├── gemini-backend.yaml                  # AgentgatewayBackend for Gemini gemini-2.5-flash-lite
+│   └── semantic-router-vllm-backend.yaml    # AgentgatewayBackend → vLLM simulator (no model — set by Semantic Router)
 ├── routes/
 │   ├── api-example-com-httproute.yaml       # HTTPRoute → HTTPBin (/)
-│   └── llm-httproute.yaml                   # HTTPRoute → OpenAI + Gemini 50/50 (/llm)
+│   ├── llm-httproute.yaml                   # HTTPRoute → OpenAI + Gemini 50/50 (/llm)
+│   └── semantic-router-httproute.yaml       # HTTPRoute → vLLM via Semantic Router (/semantic-router)
 ├── apis/
-│   └── httpbin.yaml                         # HTTPBin Deployment + Service
+│   ├── httpbin.yaml                         # HTTPBin Deployment + Service
+│   └── vllm-llama3-8b-instruct.yaml         # vLLM simulator Deployment + Service (default ns)
 ├── referencegrants/
 │   └── httpbin-ns/
 │       └── agentgateway-system-ns-httproute-service-rg.yaml
-├── policies/                                # Placeholder for EnterpriseAgentgatewayPolicy resources
+├── policies/
+│   └── semantic-router-extproc-policy.yaml  # AgentgatewayPolicy attaching Semantic Router ExtProc to the gateway
 ├── curl-request.sh                          # Test script — ingress
-└── curl-llm-request.sh                      # Test script — LLM (shows model in response)
+├── curl-llm-request.sh                      # Test script — LLM weighted routing
+└── curl-semantic-router-request.sh          # Test script — Semantic Router (shows selected expert)
 ```
 
 ## Versions

@@ -1,0 +1,14 @@
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayBackend
+metadata:
+  name: semantic-router-vllm-backend
+  namespace: agentgateway-system
+spec:
+  ai:
+    provider:
+      # Points to the in-cluster vLLM simulator using its cluster-local DNS name.
+      # No model is set here — Semantic Router's ExtProc classifies each request
+      # and injects the appropriate LoRA adapter name as the model before forwarding.
+      openai:
+        host: vllm-llama3-8b-instruct.default.svc.cluster.local
+        port: 8000
