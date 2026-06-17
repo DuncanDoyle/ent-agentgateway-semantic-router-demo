@@ -1,7 +1,7 @@
 
 #!/bin/sh
 
-export AGENTGATEWAY_VERSION="v2.3.0-rc.3"
+export AGENTGATEWAY_VERSION="v2026.6.0"
 export AGENTGATEWAY_HELM_VALUES_FILE="agentgateway-helm-values.yaml"
 export K8S_GW_API_VERSION="v1.4.1"
 export AGENTGATEWAY_SYSTEM_NAMESPACE="agentgateway-system"

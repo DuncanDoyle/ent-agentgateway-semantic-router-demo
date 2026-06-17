@@ -14,3 +14,9 @@ spec:
         name: semantic-router
         namespace: agentgateway-system
         port: 50051
+      processingOptions:
+        requestHeaderMode: Send
+        requestBodyMode: Buffered
+        responseHeaderMode: Send
+        responseBodyMode: Buffered
+        allowModeOverride: true

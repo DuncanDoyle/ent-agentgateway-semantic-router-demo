@@ -30,7 +30,7 @@ cd install
 
 This installs:
 - Kubernetes Gateway API CRDs (`v1.4.1`)
-- Solo Enterprise for agentgateway CRDs and controller (`v2.3.0-rc.3`)
+- Solo Enterprise for agentgateway CRDs and controller (`v2026.6.0`)
 
 ### Step 3 — Deploy the ingress use-case
 
@@ -150,5 +150,5 @@ agentgateway-demo-2/
 
 | Component | Version |
 |-----------|---------|
-| Solo Enterprise for agentgateway | `v2.3.0-rc.3` |
+| Solo Enterprise for agentgateway | `v2026.6.0` |
 | Kubernetes Gateway API | `v1.4.1` |
