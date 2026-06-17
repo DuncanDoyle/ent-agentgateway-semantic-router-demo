@@ -25,7 +25,7 @@ kubectl apply -f apis/vllm-llama3-8b-instruct.yaml
 
 printf "\nWaiting for vLLM simulator to be ready ...\n"
 kubectl wait --for=condition=Available deployment/vllm-llama3-8b-instruct \
-  -n default \
+  -n agentgateway-system \
   --timeout=300s
 
 # AgentgatewayBackend pointing to the vLLM simulator

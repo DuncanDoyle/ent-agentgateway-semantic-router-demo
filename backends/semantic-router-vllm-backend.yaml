@@ -6,9 +6,15 @@ metadata:
 spec:
   ai:
     provider:
-      # Points to the in-cluster vLLM simulator using its cluster-local DNS name.
-      # No model is set here — Semantic Router's ExtProc classifies each request
-      # and injects the appropriate LoRA adapter name as the model before forwarding.
-      openai:
-        host: vllm-llama3-8b-instruct.default.svc.cluster.local
-        port: 8000
+      # Points to the in-cluster vLLM simulator via a Kubernetes Service backendRef.
+      # model is set to base-model as a placeholder — Semantic Router's ExtProc
+      # classifies each request and overwrites the model with the appropriate
+      # LoRA adapter name before the request reaches vLLM.
+      custom:
+        backendRef:
+          name: vllm-llama3-8b-instruct
+          port: 8000
+        model: base-model
+        formats:
+        - type: Completions
+          path: /v1/chat/completions
