@@ -10,5 +10,5 @@ spec:
       # No model set — Semantic Router's ExtProc injects the appropriate LoRA
       # adapter name as the model field before the request reaches vLLM.
       openai: {}
-      host: vllm-llama3-8b-instruct.agentgateway-system.svc.cluster.local
+      host: vllm-llama3-8b-instruct.default.svc.cluster.local
       port: 8000
