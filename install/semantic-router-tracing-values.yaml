@@ -7,15 +7,20 @@
 # forwards them to Tempo. View them in Grafana alongside agentgateway spans
 # to get end-to-end traces across the full request pipeline.
 
-# Reduce from the default 1 CPU / 3Gi requests so the pod schedules on a
-# single-node demo cluster alongside agentgateway and the observability stack.
+# Use Recreate strategy so upgrades kill the old pod before starting the new
+# one — avoids two pods competing for resources on a single-node demo cluster.
+strategy:
+  type: Recreate
+
+# The mmBERT-32K intent classifier needs ~2Gi to load. Keep requests at 2Gi
+# (down from the default 3Gi) since with Recreate only one pod runs at a time.
 resources:
   requests:
     cpu: 500m
-    memory: 1Gi
+    memory: 2Gi
   limits:
     cpu: 1
-    memory: 2Gi
+    memory: 3Gi
 
 config:
   global:
