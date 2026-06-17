@@ -4,11 +4,8 @@
 #   Tempo     — distributed tracing backend
 #   Loki      — log aggregation
 #   Prometheus + Grafana (kube-prometheus-stack) — metrics + dashboards
-#   OTEL Collector — central receiver for OTLP traces and logs from agentgateway
-#   Promtail  — DaemonSet that scrapes pod logs and ships them to Loki.
-#               Applies JSON parsing to vLLM Semantic Router logs, extracting
-#               routing decision fields (decision, selected_model, category,
-#               confidence_score) as Loki labels for querying in Grafana.
+#   OTEL Collector — central receiver for OTLP traces and logs from
+#                    agentgateway and the vLLM Semantic Router
 #
 # Grafana credentials: admin / prom-operator
 # Grafana datasources pre-configured: Prometheus, Tempo, Loki
@@ -198,72 +195,4 @@ config:
         receivers: [otlp]
         processors: [batch]
         exporters: [debug, otlphttp/loki]
-EOF
-
-# Promtail — DaemonSet log collector scraping /var/log/pods on each node.
-# Collects logs from agentgateway-system pods and ships them to Loki.
-# Applies JSON pipeline parsing to the vLLM Semantic Router, extracting
-# routing decision fields as Loki labels so they are queryable in Grafana.
-#
-# Useful Loki queries:
-#   {namespace="agentgateway-system", app="semantic-router", msg="router_replay_complete"}
-#   {namespace="agentgateway-system", app="semantic-router"} | json | decision="math_decision"
-helm upgrade --install promtail grafana/promtail \
---version 6.16.6 \
---namespace telemetry \
---create-namespace \
---values - <<EOF
-config:
-  clients:
-    - url: http://loki.telemetry.svc.cluster.local:3100/loki/api/v1/push
-
-  snippets:
-    # Collect only pods in the agentgateway-system namespace
-    scrapeConfigs: |
-      - job_name: agentgateway-system
-        kubernetes_sd_configs:
-          - role: pod
-        relabel_configs:
-          - source_labels: [__meta_kubernetes_namespace]
-            action: keep
-            regex: agentgateway-system
-          - source_labels: [__meta_kubernetes_pod_name]
-            action: replace
-            target_label: pod
-          - source_labels: [__meta_kubernetes_namespace]
-            action: replace
-            target_label: namespace
-          - source_labels: [__meta_kubernetes_pod_container_name]
-            action: replace
-            target_label: container
-          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
-            action: replace
-            target_label: app
-          - source_labels: [__meta_kubernetes_pod_uid, __meta_kubernetes_pod_container_name]
-            target_label: __path__
-            separator: /
-            replacement: /var/log/pods/*\$1*/*\$2*/*.log
-        pipeline_stages:
-          - cri: {}
-          # Parse JSON only for the semantic-router container; other containers
-          # (agentgateway-proxy, etc.) may not emit JSON and will pass through unchanged.
-          - match:
-              selector: '{container="semantic-router"}'
-              stages:
-                - json:
-                    expressions:
-                      level: level
-                      msg: msg
-                      decision: decision
-                      selected_model: selected_model
-                      category: category
-                      confidence_score: confidence_score
-                      component: component
-                - labels:
-                    level:
-                    msg:
-                    decision:
-                    selected_model:
-                    category:
-                    component:
 EOF
