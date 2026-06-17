@@ -1,0 +1,25 @@
+# Helm values overlay — enables OTEL tracing in the vLLM Semantic Router.
+# Apply on top of the base values with:
+#   helm upgrade semantic-router ... -f semantic-router-values.yaml -f semantic-router-tracing-values.yaml
+#
+# Traces are sent to the OTEL Collector in the telemetry namespace, which
+# forwards them to Tempo. View them in Grafana alongside agentgateway spans
+# to get end-to-end traces across the full request pipeline.
+config:
+  global:
+    services:
+      observability:
+        tracing:
+          enabled: true
+          provider: opentelemetry
+          exporter:
+            type: otlp
+            endpoint: opentelemetry-collector.telemetry.svc.cluster.local:4317
+            insecure: true
+          sampling:
+            type: always_on
+            rate: 1.0
+          resource:
+            service_name: vllm-semantic-router
+            service_version: v0.1.0
+            deployment_environment: demo

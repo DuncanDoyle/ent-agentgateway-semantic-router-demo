@@ -5,6 +5,7 @@ A minimal demo environment for Solo Enterprise for agentgateway with two use-cas
 - **Ingress** — exposes an HTTPBin backend at `http://api.example.com/`
 - **LLM consumption** — weighted 50/50 routing between OpenAI (`gpt-4o-mini`) and Gemini (`gemini-2.5-flash-lite`) at `http://api.example.com/llm`
 - **vLLM Semantic Router** — prompt classification via [vLLM Semantic Router](https://vllm-semantic-router.com/docs/installation/k8s/agentgateway/) selecting a LoRA adapter at `http://api.example.com/semantic-router`
+- **Observability** — end-to-end OTEL traces spanning agentgateway + Semantic Router (Signal Extraction → Decision Blocks → Plugin Chain), with Grafana / Tempo / Loki / Prometheus in the `telemetry` namespace
 
 ## Prerequisites
 
@@ -56,7 +57,29 @@ This installs Semantic Router via Helm and deploys:
 - `HTTPRoute` on `api.example.com/semantic-router`
 - `AgentgatewayPolicy` attaching Semantic Router as an ExtProc server to the gateway (gRPC on port 50051)
 
-### Step 5 — Deploy the LLM consumption use-case
+### Step 5 — Deploy the observability stack
+
+```bash
+./setup-otel.sh
+```
+
+This installs the full OTEL stack in the `telemetry` namespace and enables tracing in both agentgateway and Semantic Router:
+- **Tempo** — trace storage (OTLP gRPC on port 4317)
+- **Loki** — log storage
+- **Prometheus + Grafana** (`kube-prometheus-stack`) — metrics and dashboards, pre-configured with Prometheus/Tempo/Loki datasources
+- **OTEL Collector** — central receiver forwarding traces to Tempo and logs to Loki
+- `EnterpriseAgentgatewayPolicy` — instructs agentgateway to emit OTLP traces to the collector
+- Semantic Router Helm upgrade — enables tracing, pointing to the same collector
+
+Access Grafana after port-forwarding:
+```bash
+kubectl -n telemetry port-forward svc/kube-prometheus-stack-grafana 3000:80
+# http://localhost:3000 — admin / prom-operator
+```
+
+Traces in Tempo show end-to-end spans: agentgateway request handling → Semantic Router Signal Extraction → Decision Blocks → Plugin Chain → vLLM.
+
+### Step 6 — Deploy the LLM consumption use-case
 
 ```bash
 export OPENAI_API_KEY=<your-openai-api-key>

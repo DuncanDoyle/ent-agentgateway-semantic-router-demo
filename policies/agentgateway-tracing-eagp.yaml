@@ -1,0 +1,23 @@
+apiVersion: enterpriseagentgateway.solo.io/v1alpha1
+kind: EnterpriseAgentgatewayPolicy
+metadata:
+  name: tracing
+  namespace: agentgateway-system
+spec:
+  targetRefs:
+    - kind: Gateway
+      name: gw
+      group: gateway.networking.k8s.io
+  frontend:
+    tracing:
+      backendRef:
+        name: opentelemetry-collector
+        namespace: telemetry
+        port: 4317
+      protocol: GRPC
+      randomSampling: "true"
+      resources:
+        - name: deployment.environment.name
+          expression: '"demo"'
+        - name: service.name
+          expression: '"agentgateway"'
