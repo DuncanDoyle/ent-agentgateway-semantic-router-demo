@@ -1,0 +1,13 @@
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayBackend
+metadata:
+  name: gemini-tier-backend
+  namespace: agentgateway-system
+spec:
+  ai:
+    provider:
+      gemini: {}            # no model — taken from request body (SR-selected)
+  policies:
+    auth:
+      secretRef:
+        name: gemini-secret
