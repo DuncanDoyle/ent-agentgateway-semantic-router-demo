@@ -10,7 +10,8 @@ printf "\nInstall vLLM Semantic Router ...\n"
 helm upgrade --install semantic-router oci://ghcr.io/vllm-project/charts/semantic-router \
   --version v0.0.0-latest \
   --namespace agentgateway-system \
-  -f https://raw.githubusercontent.com/vllm-project/semantic-router/refs/heads/main/deploy/kubernetes/agentgateway/semantic-router-values/values.yaml
+  -f https://raw.githubusercontent.com/vllm-project/semantic-router/refs/heads/main/deploy/kubernetes/agentgateway/semantic-router-values/values.yaml \
+  -f install/semantic-router-pin-values.yaml
 
 printf "\nWaiting for Semantic Router to be ready ...\n"
 kubectl wait --for=condition=Available deployment/semantic-router \
