@@ -22,6 +22,7 @@ resources:
   limits:   { cpu: 1,    memory: 3Gi }
 
 config:
+  version: v0.3                  # match the upstream values' Helm input version
   providers:
     defaults:
       # Override the base default (general-expert) with one of our models.
@@ -104,9 +105,9 @@ config:
           conditions:
             - { type: domain, name: computer science }
             - { type: complexity, name: "tier:hard" }
-        modelRefs:
-          - { model: gpt-4.1, use_reasoning: false }
-          - { model: gemini-2.5-pro, use_reasoning: false }
+        modelRefs:                 # cheapest-first by convention (order is cosmetic; cost picks)
+          - { model: gemini-2.5-pro, use_reasoning: false }   # $1.25 — wins
+          - { model: gpt-4.1, use_reasoning: false }          # $2.00
         algorithm:
           type: multi_factor
           multi_factor:
@@ -114,24 +115,27 @@ config:
             on_no_candidates: cheapest
 
       # --- Complexity tiers (primary backbone): cheapest capable per tier ---
+      # Candidate sets are chosen so the cheapest differs by provider across tiers
+      # (medium ⇒ OpenAI wins, others ⇒ Gemini), keeping both providers visible,
+      # and every cost gap is >=2x so the selection is observable in telemetry.
       - name: advanced_tier
         description: Hard complexity (any domain) — cheapest advanced-capable
         priority: 50
-        rules: { operator: OR, conditions: [{ type: complexity, name: "tier:hard" }] }
+        rules: { type: complexity, name: "tier:hard" }
         modelRefs:
-          - { model: gemini-2.5-pro, use_reasoning: false }
-          - { model: gpt-4.1, use_reasoning: false }
+          - { model: gemini-2.5-pro, use_reasoning: false }   # $1.25 — wins
+          - { model: gpt-4o, use_reasoning: false }           # $2.50
         algorithm:
           type: multi_factor
           multi_factor: { weights: { cost: 1.0, quality: 0, latency: 0, load: 0 }, on_no_candidates: cheapest }
 
       - name: medium_tier
-        description: Medium complexity — cheapest mid-tier model
+        description: Medium complexity — cheapest mid-tier model (OpenAI wins here)
         priority: 40
-        rules: { operator: OR, conditions: [{ type: complexity, name: "tier:medium" }] }
+        rules: { type: complexity, name: "tier:medium" }
         modelRefs:
-          - { model: gemini-2.5-flash, use_reasoning: false }
-          - { model: gpt-4o-mini, use_reasoning: false }
+          - { model: gpt-4o-mini, use_reasoning: false }      # $0.15 — wins
+          - { model: gemini-2.5-flash, use_reasoning: false } # $0.30
         algorithm:
           type: multi_factor
           multi_factor: { weights: { cost: 1.0, quality: 0, latency: 0, load: 0 }, on_no_candidates: cheapest }
@@ -139,20 +143,18 @@ config:
       - name: simple_tier
         description: Easy complexity (bulk of traffic) — cheapest simple-capable
         priority: 30
-        rules: { operator: OR, conditions: [{ type: complexity, name: "tier:easy" }] }
+        rules: { type: complexity, name: "tier:easy" }
         modelRefs:
-          - { model: gemini-2.5-flash-lite, use_reasoning: false }
-          - { model: gpt-4o-mini, use_reasoning: false }
+          - { model: gemini-2.5-flash-lite, use_reasoning: false }  # $0.10 — wins
+          - { model: gpt-4o-mini, use_reasoning: false }            # $0.15
         algorithm:
           type: multi_factor
           multi_factor: { weights: { cost: 1.0, quality: 0, latency: 0, load: 0 }, on_no_candidates: cheapest }
 
-      - name: default_tier
-        description: Fallback when no complexity bucket matched
-        priority: 1
-        rules: { operator: OR, conditions: [{ type: domain, name: other }] }
-        modelRefs: [{ model: gemini-2.5-flash-lite, use_reasoning: false }]
-        algorithm: { type: static }
+      # No explicit fallback decision: the complexity signal always emits exactly one
+      # of tier:hard|medium|easy and the three tiers above are exhaustive. If the
+      # complexity signal ever fails to emit, SR falls back to
+      # providers.defaults.default_model (gemini-2.5-flash-lite).
 
   # --- OPTIONAL: enable PII detection (pairs with the pii signal + pii_lane above) ---
   # global:
