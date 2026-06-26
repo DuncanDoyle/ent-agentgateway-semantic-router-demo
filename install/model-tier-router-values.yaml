@@ -15,6 +15,12 @@
 #    `static` = NOT cheapest). pricing.prompt_per_1m MUST be > 0 to rank on cost.
 #  - PRICES BELOW ARE ILLUSTRATIVE — set from current OpenAI/Gemini list prices.
 
+# Force the Service/Deployment name to exactly `model-tier-router`. Without this the
+# chart's fullname helper names them `model-tier-router-semantic-router` (the release
+# name doesn't contain "semantic-router"), which would not match the ExtProc policy's
+# backendRef.name nor the setup script's `kubectl wait deployment/model-tier-router`.
+fullnameOverride: model-tier-router
+
 strategy:
   type: Recreate                 # single-node demo: kill old pod before new
 resources:
