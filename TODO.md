@@ -23,6 +23,47 @@ kubectl create secret generic hf-token-secret \
 
 ---
 
+## Demo stability
+
+### Pin the Semantic Router image (and chart) version — currently floating on `latest`
+
+The SR install uses a floating chart version **and** a floating image tag:
+
+```bash
+helm upgrade --install semantic-router oci://ghcr.io/vllm-project/charts/semantic-router \
+  --version v0.0.0-latest \
+  --namespace agentgateway-system \
+  -f .../agentgateway/semantic-router-values/values.yaml
+# image: ghcr.io/vllm-project/semantic-router/extproc:latest
+```
+
+**Investigated 2026-06-26.** The running pod is on:
+
+| | |
+|---|---|
+| Image | `ghcr.io/vllm-project/semantic-router/extproc:latest` |
+| Running digest | `sha256:687801890a026dceee18dd2073a0384e965eab34d9769a1bcd80a8a2272a5c54` |
+| Built | **2026-06-17** (a `main`-branch rolling build, newer than `v0.3.0` = 2026-06-05) |
+| `imagePullPolicy` | `IfNotPresent` |
+
+The `latest` tag has **already drifted**: as of 2026-06-26 it points at a **2026-06-23** build (`sha256:b348c46…`), 6 days ahead of what we run. `IfNotPresent` keeps the cached June-17 image across container restarts, but a **pod reschedule onto a fresh node will pull whatever `latest` is that day** — so demo behaviour can change with no config change on our side.
+
+**Action before demoing:** pin the image to the validated digest (most reproducible — freezes the exact bits we tested):
+
+```yaml
+# semantic-router values
+image:
+  repository: ghcr.io/vllm-project/semantic-router/extproc
+  digest: sha256:687801890a026dceee18dd2073a0384e965eab34d9769a1bcd80a8a2272a5c54
+  pullPolicy: IfNotPresent
+```
+
+Alternatively pin to the released tag `v0.3.0` (documented, shareable version number, known to contain the cost-aware `multi_factor` selector + `pricing` schema) and re-test — note this moves ~12 days back from the current build. Also pin the chart `--version` away from `v0.0.0-latest` to a concrete chart release if one is published (`helm show chart oci://ghcr.io/vllm-project/charts/semantic-router`), since the chart templates/values can change independently of the image.
+
+> Both `model-tier-router` and `semantic-router` Helm releases must be pinned consistently if they share an image.
+
+---
+
 ## Planned features
 
 ### Semantic Router-driven LLM provider selection (replaces weighted HTTPRoute)
