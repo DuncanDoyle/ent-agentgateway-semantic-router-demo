@@ -66,11 +66,13 @@ Alternatively pin to the released tag `v0.3.0` (documented, shareable version nu
 
 ## Planned features
 
-### Semantic Router-driven LLM provider selection (replaces weighted HTTPRoute)
+### Semantic Router-driven LLM provider selection — IMPLEMENTED (additive `/llm-tier`)
 
-Currently `/llm` uses a 50/50 weighted HTTPRoute between OpenAI and Gemini. The goal is to have the vLLM Semantic Router make the provider selection decision based on prompt domain classification (e.g. analytical domains → OpenAI, language-heavy domains → Gemini), with cost-optimised model selection in the plugin chain.
+**Done (2026-06-26).** Implemented as the additive `model-tier-router` use-case on `/llm-tier` (the weighted `/llm` is left intact). The vLLM Semantic Router classifies each prompt by **complexity** (primary) and routes to the **cheapest capable model** across OpenAI + Gemini via the per-decision `multi_factor` cost selector. Install: `install/setup-model-tier-router.sh`; switch with `install/switch-to-{model-tier,semantic}-router.sh`; probes `curl-model-tier-*.sh`.
 
-See `docs/design-semantic-router-llm-routing.md` for the full design.
+See `docs/design-semantic-router-llm-routing.md` (design) and `docs/superpowers/plans/2026-06-26-model-tier-router.md` (implementation plan).
+
+**Phase 2 (not yet done):** cost-savings telemetry & explainability (capture per-prompt decision + selected model + price; compute savings vs. always-premium baseline). **Optional follow-ups:** enable the PII lane (needs the PII detector model bundled — see the commented block in `install/model-tier-router-values.yaml`); evaluate matching the route on the SR-emitted `x-vsr-model` header to drop the PreRouting transformation.
 
 ---
 

@@ -5,6 +5,7 @@ A minimal demo environment for Solo Enterprise for agentgateway with two use-cas
 - **Ingress** — exposes an HTTPBin backend at `http://api.example.com/`
 - **LLM consumption** — weighted 50/50 routing between OpenAI (`gpt-4o-mini`) and Gemini (`gemini-2.5-flash-lite`) at `http://api.example.com/llm`
 - **vLLM Semantic Router** — prompt classification via [vLLM Semantic Router](https://vllm-semantic-router.com/docs/installation/k8s/agentgateway/) selecting a LoRA adapter at `http://api.example.com/semantic-router`
+- **Cost-aware model-tier routing** — Semantic Router classifies each prompt by **complexity** (primary) and routes it to the **cheapest capable model** across OpenAI + Gemini at `http://api.example.com/llm-tier` (see [`docs/design-semantic-router-llm-routing.md`](docs/design-semantic-router-llm-routing.md))
 - **Observability** — end-to-end OTEL traces spanning agentgateway + Semantic Router (Signal Extraction → Decision Blocks → Plugin Chain), with Grafana / Tempo / Loki / Prometheus in the `telemetry` namespace
 
 ## Prerequisites
@@ -92,6 +93,32 @@ This creates Kubernetes secrets for both providers and deploys:
 - `AgentgatewayBackend` for Gemini (`gemini-2.5-flash-lite`)
 - `HTTPRoute` with 50/50 weighted `backendRefs` on `api.example.com/llm`
 
+### Step 7 — Deploy the cost-aware model-tier-router use-case
+
+Requires the secrets from Step 6 (`openai-secret` / `gemini-secret`) and the vLLM simulator from Step 4 (reused as the PII sink).
+
+```bash
+cd install
+./setup-model-tier-router.sh
+```
+
+This installs a **second** Semantic Router Helm release, `model-tier-router` (side-by-side with the LoRA `semantic-router` release), and deploys:
+- `*-tier` `AgentgatewayBackend`s for OpenAI + Gemini (no pinned model — taken from the SR-selected `body.model`) and a `vllm-local-backend` PII sink
+- `HTTPRoute` on `api.example.com/llm-tier`, routing by the `x-model` header to the right provider backend
+- `AgentgatewayPolicy` PreRouting transformation (`body.model` → `x-model`)
+
+The SR config classifies prompts by **complexity** (`tier:hard|medium|easy`) and, per tier, lists multiple candidate models and picks the **cheapest** at runtime via the per-decision `multi_factor` cost selector. See [`docs/design-semantic-router-llm-routing.md`](docs/design-semantic-router-llm-routing.md).
+
+**Switching the active Semantic Router** (the ExtProc is gateway-wide, so only one SR is active at a time):
+
+```bash
+cd install
+./switch-to-model-tier-router.sh   # activate cost-aware tier routing (/llm-tier)
+./switch-to-semantic-router.sh     # switch back to LoRA routing (/semantic-router)
+```
+
+The weighted `/llm` and LoRA `/semantic-router` use-cases keep working — this use-case is fully additive.
+
 ## Testing
 
 Add `api.example.com` to your `/etc/hosts` pointing to your gateway's external IP, or port-forward:
@@ -135,6 +162,26 @@ Semantic Router classifies the prompt and sets the model to the appropriate LoRA
 ```
 
 Try different prompts to exercise different adapters (math, science, social, humanities, law, general).
+
+### Cost-aware model-tier routing
+
+First activate it: `cd install && ./switch-to-model-tier-router.sh`. Then:
+
+```bash
+./curl-model-tier-simple.sh      # easy   -> cheapest simple model  (gemini-2.5-flash-lite)
+./curl-model-tier-medium.sh      # medium -> cheapest mid model     (gpt-4o-mini — OpenAI wins)
+./curl-model-tier-advanced.sh    # hard   -> cheapest advanced      (gemini-2.5-pro)
+./curl-model-tier-analytical.sh  # CS + hard -> analytical lane     (gemini-2.5-pro)
+./curl-model-tier-jailbreak.sh   # jailbreak -> refused by prompt_guard
+```
+
+The `model` field shows the selected model; confirm the routing decision in the SR logs:
+
+```bash
+kubectl logs deploy/model-tier-router -n agentgateway-system --tail=120 | grep -iE 'router_replay|decision|selected|model'
+```
+
+Each tier lists candidates from both providers and picks the cheapest, so different tiers land on different providers — an explainable, cost-driven story per prompt.
 
 ## Structure
 
