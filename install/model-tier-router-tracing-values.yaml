@@ -1,0 +1,35 @@
+# Helm values overlay — enables OTEL tracing in the cost-aware model-tier-router
+# Semantic Router release.
+#
+# Apply on top of the base values AND the model-tier-router overlay:
+#   helm upgrade model-tier-router ... \
+#     -f <upstream values.yaml> \
+#     -f model-tier-router-values.yaml \
+#     -f model-tier-router-tracing-values.yaml \
+#     -f semantic-router-pin-values.yaml
+#
+# Unlike semantic-router-tracing-values.yaml this file carries ONLY the tracing
+# config — strategy (Recreate) and reduced resource requests already come from
+# model-tier-router-values.yaml, so there is no need to repeat them here.
+#
+# service_name is set to 'model-tier-router' so its spans are distinguishable
+# from the LoRA `semantic-router` release in Grafana/Tempo.
+
+config:
+  global:
+    services:
+      observability:
+        tracing:
+          enabled: true
+          provider: opentelemetry
+          exporter:
+            type: otlp
+            endpoint: opentelemetry-collector.telemetry.svc.cluster.local:4317
+            insecure: true
+          sampling:
+            type: always_on
+            rate: 1.0
+          resource:
+            service_name: model-tier-router
+            service_version: v0.1.0
+            deployment_environment: demo
