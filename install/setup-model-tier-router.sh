@@ -33,11 +33,8 @@ kubectl apply -f backends/openai-tier-backend.yaml
 kubectl apply -f backends/gemini-tier-backend.yaml
 kubectl apply -f backends/vllm-local-backend.yaml
 
-printf "\nDeploy /llm-tier header-routing HTTPRoute ...\n"
+printf "\nDeploy /llm-tier single-pass HTTPRoute (routes by SR's x-selected-model) ...\n"
 kubectl apply -f routes/model-tier-httproute.yaml
-
-printf "\nDeploy PreRouting transformation (body.model -> x-model) ...\n"
-kubectl apply -f policies/model-tier-router-prerouting-policy.yaml
 
 printf "\nNOTE: attach the ExtProc with install/switch-to-model-tier-router.sh\n"
 printf "      (only one Semantic Router ExtProc can be active on the gateway at a time)\n"

@@ -1,3 +1,9 @@
+# Single-pass model-tier routing. The Semantic Router runs as a PreRouting-phase gateway
+# ExtProc (model-tier-router-extproc-policy.yaml, phase: PreRouting), so it classifies the
+# prompt and sets x-selected-model BEFORE the routing decision. This route then matches that
+# header to pick the provider backend — in one pass, no loopback.
+# NOTE: agentgateway regex header matches are FULL-VALUE — "^gpt-" would NOT match "gpt-4o-mini";
+# use "gpt-.*".
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -14,20 +20,20 @@ spec:
     - matches:
         - path: { type: PathPrefix, value: /llm-tier }
           headers:
-            - { type: RegularExpression, name: x-model, value: "^gpt-" }
+            - { type: RegularExpression, name: x-selected-model, value: "gpt-.*" }
       backendRefs:
         - { name: openai-tier-backend, namespace: agentgateway-system, group: agentgateway.dev, kind: AgentgatewayBackend }
     # Gemini models (gemini-*)
     - matches:
         - path: { type: PathPrefix, value: /llm-tier }
           headers:
-            - { type: RegularExpression, name: x-model, value: "^gemini-" }
+            - { type: RegularExpression, name: x-selected-model, value: "gemini-.*" }
       backendRefs:
         - { name: gemini-tier-backend, namespace: agentgateway-system, group: agentgateway.dev, kind: AgentgatewayBackend }
     # Local vLLM (PII sink)
     - matches:
         - path: { type: PathPrefix, value: /llm-tier }
           headers:
-            - { type: Exact, name: x-model, value: vllm-local }
+            - { type: Exact, name: x-selected-model, value: vllm-local }
       backendRefs:
         - { name: vllm-local-backend, namespace: agentgateway-system, group: agentgateway.dev, kind: AgentgatewayBackend }

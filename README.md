@@ -60,17 +60,25 @@ This installs Semantic Router via Helm and deploys:
 
 ### Step 5 — Deploy the observability stack
 
+The OTEL setup is split into a router-agnostic stack script and a per-router tracing script. First install the stack (run once):
+
 ```bash
-./setup-otel.sh
+./setup-otel-stack.sh
 ```
 
-This installs the full OTEL stack in the `telemetry` namespace and enables tracing in both agentgateway and Semantic Router:
+This installs the full OTEL stack in the `telemetry` namespace and enables tracing in agentgateway:
 - **Tempo** — trace storage (OTLP gRPC on port 4317)
 - **Loki** — log storage
 - **Prometheus + Grafana** (`kube-prometheus-stack`) — metrics and dashboards, pre-configured with Prometheus/Tempo/Loki datasources
 - **OTEL Collector** — central receiver forwarding traces to Tempo and logs to Loki
 - `EnterpriseAgentgatewayPolicy` — instructs agentgateway to emit OTLP traces to the collector
-- Semantic Router Helm upgrade — enables tracing, pointing to the same collector
+
+Then enable tracing in whichever Semantic Router release you are running (upgrades the Helm release to point at the same collector):
+
+```bash
+./setup-otel-semantic-router.sh     # LoRA use-case, release `semantic-router`   (service: vllm-semantic-router)
+./setup-otel-model-tier-router.sh   # cost-aware tier router, release `model-tier-router` (service: model-tier-router)
+```
 
 Access Grafana after port-forwarding:
 ```bash
@@ -104,8 +112,10 @@ cd install
 
 This installs a **second** Semantic Router Helm release, `model-tier-router` (side-by-side with the LoRA `semantic-router` release), and deploys:
 - `*-tier` `AgentgatewayBackend`s for OpenAI + Gemini (no pinned model — taken from the SR-selected `body.model`) and a `vllm-local-backend` PII sink
-- `HTTPRoute` on `api.example.com/llm-tier`, routing by the `x-model` header to the right provider backend
-- `AgentgatewayPolicy` PreRouting transformation (`body.model` → `x-model`)
+- A single `HTTPRoute` on `api.example.com/llm-tier` that routes by SR's `x-selected-model` header to the right provider backend
+- `AgentgatewayPolicy` attaching SR as a **`phase: PreRouting`** ExtProc
+
+> **Why `phase: PreRouting`?** A policy's default phase is `PostRouting` (runs *after* the route decision), so SR's model choice wouldn't be visible to routing. `phase: PreRouting` runs SR *before* routing, making its `x-selected-model` header available to the HTTPRoute match — single-pass, no loopback. (An earlier loopback design worked around the default; see [`docs/analysis-extproc-body-phase-routing.md`](docs/analysis-extproc-body-phase-routing.md) and [`docs/decision-model-tier-routing-options.md`](docs/decision-model-tier-routing-options.md).)
 
 The SR config classifies prompts by **complexity** (`tier:hard|medium|easy`) and, per tier, lists multiple candidate models and picks the **cheapest** at runtime via the per-decision `multi_factor` cost selector. See [`docs/design-semantic-router-llm-routing.md`](docs/design-semantic-router-llm-routing.md).
 

@@ -1,5 +1,27 @@
 # Design: Semantic Router-driven, Cost-aware LLM Model Routing
 
+> ## ⚠️ ARCHITECTURE UPDATED 2026-06-29 — the routing mechanism below is SUPERSEDED
+>
+> The single-pass mechanism described in this document (gateway PreRouting transformation
+> `body.model → x-model` + `/llm-tier` HTTPRoute matching that header) **does not work**.
+> agentgateway makes its route decision after only the ExtProc **header** phase, but SR
+> decides the model in its **body** phase — *after* routing — so neither the rewritten
+> `body.model` nor SR's header is visible to route matching. Full root cause:
+> [`analysis-extproc-body-phase-routing.md`](./analysis-extproc-body-phase-routing.md).
+>
+> **Implemented: single-pass routing via `phase: PreRouting`** (decision:
+> [`decision-model-tier-routing-options.md`](./decision-model-tier-routing-options.md)).
+> The ExtProc `AgentgatewayPolicy` sets `traffic.phase: PreRouting` (the default is `PostRouting`,
+> which runs *after* routing — the original problem). With PreRouting, SR runs before route
+> selection, so its `x-selected-model` header is available at match time. A single `/llm-tier`
+> `HTTPRoute` matches that header → the per-provider `*-tier` backend. No loopback, no extra listener.
+>
+> A two-pass loopback design was built first as a workaround and verified working, then retired once
+> `phase: PreRouting` was identified. Also note: agentgateway regex header matches are **full-value**
+> (`^gpt-` won't match `gpt-4o-mini`; use `gpt-.*`). The signal classification + cost-selection
+> sections below remain accurate; only the gateway routing mechanism changed. Verified end-to-end
+> 2026-06-29 (easy→Gemini Flash-Lite, medium→GPT-4o-mini, hard→GPT-4.1).
+
 **Status:** Draft
 **Date:** 2026-06-24 (rev. 2026-06-26: runtime cost-aware `multi_factor` selection + **complexity** as the primary signal, both verified against the installed build's source at commit `8000843c`; deployed additively on `/llm-tier` with `*-tier` backends so the existing demos are untouched. See [Schema verification](#schema-verification).)
 **Goal:** Use the vLLM Semantic Router to classify each prompt — **complexity (primary)**, plus domain, language, PII, and jailbreak — and route it to the **cheapest model that meets the required capability tier** across multiple OpenAI and Gemini models, while keeping PII in-cluster on a local vLLM model. Deployed **additively** on `/llm-tier` as a **side-by-side ExtProc** (`model-tier-router`) that can be switched on by swapping the gateway `AgentgatewayPolicy`; the existing weighted `/llm` and LoRA `/semantic-router` demos are left intact.

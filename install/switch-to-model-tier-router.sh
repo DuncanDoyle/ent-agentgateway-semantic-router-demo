@@ -6,6 +6,8 @@
 # Run from the install/ directory.
 
 kubectl delete -f ../policies/semantic-router-extproc-policy.yaml --ignore-not-found
-kubectl apply  -f ../policies/model-tier-router-prerouting-policy.yaml
-kubectl apply  -f ../policies/model-tier-router-extproc-policy.yaml
-printf "\nActive ExtProc: model-tier-router (cost-aware tier routing on /llm-tier)\n"
+# Remove the old PreRouting transformation if a previous install applied it — the two-pass
+# loopback design no longer uses it (routing matches SR's x-selected-model on the :8080 pass).
+kubectl delete agentgatewaypolicy model-tier-router-prerouting -n agentgateway-system --ignore-not-found
+kubectl apply  -f ../policies/model-tier-router-extproc-policy.yaml   # scoped to sectionName: http
+printf "\nActive ExtProc: model-tier-router (scoped to :80; cost-aware tier routing on /llm-tier via :8080 loopback)\n"

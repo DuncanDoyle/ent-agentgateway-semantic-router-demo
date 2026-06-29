@@ -37,8 +37,7 @@ kubectl apply -f backends/semantic-router-vllm-backend.yaml
 printf "\nDeploy Semantic Router HTTPRoute ...\n"
 kubectl apply -f routes/semantic-router-httproute.yaml
 
-# AgentgatewayPolicy attaching Semantic Router as an ExtProc to the gateway
-printf "\nDeploy ExtProc policy ...\n"
-kubectl apply -f policies/semantic-router-extproc-policy.yaml
-
+printf "\nNOTE: attach the ExtProc with install/switch-to-semantic-router.sh\n"
+printf "      (only one Semantic Router ExtProc can be active on the gateway at a time)\n"
 popd
+

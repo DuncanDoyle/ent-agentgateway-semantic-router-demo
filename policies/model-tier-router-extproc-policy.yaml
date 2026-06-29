@@ -9,6 +9,11 @@ spec:
       kind: Gateway
       name: gw
   traffic:
+    # PreRouting: run SR BEFORE the routing decision so its output (rewritten body.model +
+    # the x-selected-model header) is visible to route matching — enabling single-pass
+    # provider routing. The default phase is PostRouting (runs AFTER routing), which is why
+    # an earlier loopback design was needed; phase: PreRouting removes that need.
+    phase: PreRouting
     extProc:
       backendRef:
         name: model-tier-router          # the second SR Helm release's service

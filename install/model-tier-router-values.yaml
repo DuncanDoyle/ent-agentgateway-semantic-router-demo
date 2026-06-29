@@ -69,11 +69,16 @@ config:
       # |margin| < threshold ⇒ "medium". Emits tier:hard / tier:medium / tier:easy.
       # Tune candidates + threshold against real demo prompts (plan Task 2/8).
       complexity:
+        # threshold = the |hard_sim - easy_sim| margin needed to leave the "medium" band.
+        # 0.6 was too wide: observed margins span ~[-0.4, +0.4], so every prompt collapsed to
+        # medium -> gpt-4o-mini. 0.25 splits the demo prompts: analytical (~+0.40) -> hard,
+        # "hello"/easy (~-0.39) -> easy, genuinely-ambiguous (~+/-0.05) -> medium. Tune empirically.
         - name: tier
-          threshold: 0.6
+          threshold: 0.25
           hard:
             candidates:
               - "prove the theorem step by step"
+              - "prove that the square root of 2 is irrational"   # math-proof exemplar so proofs escalate to hard
               - "design a fault-tolerant distributed system"
               - "analyze the root cause across multiple services"
               - "derive the optimal algorithm and its time complexity"
@@ -111,9 +116,11 @@ config:
           conditions:
             - { type: domain, name: computer science }
             - { type: complexity, name: "tier:hard" }
+        # NOTE: gemini-2.5-pro removed — the demo Gemini key has zero free-tier quota for it
+        # (429 RESOURCE_EXHAUSTED). Hard tier uses OpenAI frontier models, which the key serves.
         modelRefs:                 # cheapest-first by convention (order is cosmetic; cost picks)
-          - { model: gemini-2.5-pro, use_reasoning: false }   # $1.25 — wins
-          - { model: gpt-4.1, use_reasoning: false }          # $2.00
+          - { model: gpt-4.1, use_reasoning: false }          # $2.00 — wins
+          - { model: gpt-4o, use_reasoning: false }           # $2.50
         algorithm:
           type: multi_factor
           multi_factor:
@@ -121,15 +128,15 @@ config:
             on_no_candidates: cheapest
 
       # --- Complexity tiers (primary backbone): cheapest capable per tier ---
-      # Candidate sets are chosen so the cheapest differs by provider across tiers
-      # (medium ⇒ OpenAI wins, others ⇒ Gemini), keeping both providers visible,
-      # and every cost gap is >=2x so the selection is observable in telemetry.
+      # Cross-provider is visible across the ladder: easy ⇒ Gemini (flash-lite),
+      # medium ⇒ OpenAI (gpt-4o-mini). Hard would ideally add Gemini 2.5 Pro, but the
+      # demo Gemini key has no quota for it, so hard stays on OpenAI frontier models.
       - name: advanced_tier
         description: Hard complexity (any domain) — cheapest advanced-capable
         priority: 50
         rules: { type: complexity, name: "tier:hard" }
-        modelRefs:
-          - { model: gemini-2.5-pro, use_reasoning: false }   # $1.25 — wins
+        modelRefs:                 # gemini-2.5-pro removed (no key quota — see analytical_advanced)
+          - { model: gpt-4.1, use_reasoning: false }          # $2.00 — wins
           - { model: gpt-4o, use_reasoning: false }           # $2.50
         algorithm:
           type: multi_factor
