@@ -19,12 +19,24 @@ echo
 # turn <n> <expected> <prompt>
 turn() {
   n="$1"; expected="$2"; prompt="$3"
-  model=$(curl -s "$URL" \
+  # Capture the body AND the HTTP status (curl -w) so an upstream failure — e.g. a Gemini
+  # 429 free-tier quota error — is surfaced as "HTTP <code>: <message>" instead of being
+  # silently rendered as a bare "null" model (which looks like a routing bug but isn't).
+  resp=$(curl -s -w '\n%{http_code}' "$URL" \
     -H "Content-Type: application/json" \
     -H "x-session-id: $SESSION_ID" \
-    -d "{\"model\":\"auto\",\"messages\":[{\"role\":\"user\",\"content\":\"$prompt\"}]}" \
-    | jq -r '.model')
-  printf "Turn %s [%-5s] -> model: %-24s | %s\n" "$n" "$expected" "$model" "$prompt"
+    -d "{\"model\":\"auto\",\"messages\":[{\"role\":\"user\",\"content\":\"$prompt\"}]}")
+  code=$(printf '%s\n' "$resp" | tail -n1)         # last line = HTTP status code
+  body=$(printf '%s\n' "$resp" | sed '$d')         # everything before it = response body
+  if [ "$code" = "200" ]; then
+    model=$(printf '%s' "$body" | jq -r '.model // "unknown"')
+    printf "Turn %s [%-5s] -> model: %-24s | %s\n" "$n" "$expected" "$model" "$prompt"
+  else
+    # Pull a human error message from the body; collapse to one line and cap the length.
+    err=$(printf '%s' "$body" | jq -r '.error.message // .message // .' 2>/dev/null | tr '\n' ' ' | cut -c1-160)
+    [ -z "$err" ] && err="$body"
+    printf "Turn %s [%-5s] -> HTTP %s: %s\n" "$n" "$expected" "$code" "$err"
+  fi
 }
 
 turn 1 easy "Hi! Give a one-line summary of what you can help me with."

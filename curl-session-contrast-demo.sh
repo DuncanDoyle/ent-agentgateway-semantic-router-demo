@@ -29,11 +29,23 @@ SETTLE=5   # seconds to let an ExtProc switch reconcile on the gateway
 tmpd=$(mktemp -d)
 trap 'rm -rf "$tmpd"' EXIT
 
-# ask <prompt> -> prints the selected model. Uses global $HDR (empty, or the session header).
+# ask <prompt> -> prints the selected model (one line, for the table columns). Uses global
+# $HDR (empty, or the session header). On an upstream failure it prints a compact "HTTP <code>"
+# cell (so the table stays aligned and the switch counter still works) and records the full
+# "HTTP <code>: <message>" to $tmpd/errors for a summary below the table — instead of a bare "null".
 ask() {
-  curl -s "$URL" -H "Content-Type: application/json" $HDR \
-    -d "$(printf '{"model":"auto","messages":[{"role":"user","content":"%s"}]}' "$1")" \
-    | jq -r '.model'
+  resp=$(curl -s -w '\n%{http_code}' "$URL" -H "Content-Type: application/json" $HDR \
+    -d "$(printf '{"model":"auto","messages":[{"role":"user","content":"%s"}]}' "$1")")
+  code=$(printf '%s\n' "$resp" | tail -n1)         # last line = HTTP status code
+  body=$(printf '%s\n' "$resp" | sed '$d')         # everything before it = response body
+  if [ "$code" = "200" ]; then
+    printf '%s' "$body" | jq -r '.model // "unknown"'
+  else
+    err=$(printf '%s' "$body" | jq -r '.error.message // .message // .' 2>/dev/null | tr '\n' ' ' | cut -c1-200)
+    [ -z "$err" ] && err="$body"
+    printf 'HTTP %s: %s\n' "$code" "$err" >> "$tmpd/errors"
+    printf 'HTTP %s\n' "$code"            # compact cell value for the table
+  fi
 }
 
 # The oscillating sequence (easy, medium, easy, medium, easy, medium). The medium turns
@@ -81,5 +93,12 @@ sw_session=$(count_switches "$tmpd/session")
 echo
 echo "Model changes over the conversation:  stateless = $sw_stateless   session-aware = $sw_session"
 echo "(Each stateless change is a cold prompt-cache. Session-aware pins, so it changes at most once.)"
+
+# Surface any upstream failures (cells shown as "HTTP <code>" above) with their full message.
+if [ -s "$tmpd/errors" ]; then
+  echo
+  echo "NOTE: some upstream calls failed (shown as 'HTTP <code>' in the table above):"
+  sort -u "$tmpd/errors" | sed 's/^/  /'
+fi
 echo
 echo "Active ExtProc left as: session-aware-router"
