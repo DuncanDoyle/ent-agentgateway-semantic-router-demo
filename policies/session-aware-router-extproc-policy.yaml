@@ -1,0 +1,28 @@
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: session-aware-router-extproc
+  namespace: agentgateway-system
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: gw
+  traffic:
+    # PreRouting: run SR BEFORE the routing decision so its output (rewritten body.model +
+    # the x-selected-model header) is visible to route matching — single-pass provider
+    # routing, no loopback. Session-aware selection happens inside this same ExtProc call;
+    # the ExtProc still runs on EVERY request (it holds the per-session pin internally and
+    # cheaply returns the pinned model when no switch is warranted).
+    phase: PreRouting
+    extProc:
+      backendRef:
+        name: session-aware-router       # the session-aware SR Helm release's service
+        namespace: agentgateway-system
+        port: 50051
+      processingOptions:
+        requestHeaderMode: Send
+        requestBodyMode: Buffered
+        responseHeaderMode: Send
+        responseBodyMode: Buffered
+        allowModeOverride: true

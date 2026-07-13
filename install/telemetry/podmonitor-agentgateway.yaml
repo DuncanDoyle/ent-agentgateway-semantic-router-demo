@@ -1,0 +1,26 @@
+# Makes kube-prometheus-stack scrape the agentgateway DATA-PLANE proxy metrics (:15020).
+#
+# WHY A PodMonitor (not a ServiceMonitor): the proxy's Service (`gw`) only publishes the
+# listener port (80) — the metrics port 15020 is a pod container port only, so there is no
+# Service endpoint to target. A PodMonitor scrapes pod ports directly.
+#
+# This exposes the agentgateway_* families, incl. the OTel GenAI metrics
+# (agentgateway_gen_ai_client_token_usage, agentgateway_gen_ai_server_request_duration) and
+# agentgateway_requests_total{backend,status,protocol="llm"}.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: agentgateway-proxy
+  namespace: agentgateway-system
+  labels:
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames: [agentgateway-system]
+  selector:
+    matchLabels:
+      gateway.networking.k8s.io/gateway-name: gw   # the Gateway-managed proxy pod
+  podMetricsEndpoints:
+    - port: metrics          # gw pod container port 15020 (named `metrics`)
+      path: /metrics
+      interval: 15s

@@ -1,0 +1,29 @@
+# Pins the Semantic Router image for the session-aware use-case to the 2026-06-17 main
+# build, addressed by its git-commit tag (commit 8000843c). This is a multi-arch tag
+# (linux/amd64 + linux/arm64) so it runs on the arm64 demo node.
+#
+# IMPORTANT — the chart pins by TAG, not digest: templates/deployment.yaml renders
+#   image: "{repository}:{image.tag | default .Chart.AppVersion}"
+# and has NO digest support, so an `image.digest:` key is silently ignored and the image
+# resolves to `:latest`. We therefore pin with `image.tag` set to the full commit SHA.
+#
+# WHY this build:
+#  - v0.3.0 (2026-06-05) dies at startup with "failed to generate embedding with model
+#    type mmbert (status: -1)": model auto-download at startup was added AFTER v0.3.0, so
+#    v0.3.0 has no mmbert embedding model for the complexity signal's candidate exemplars.
+#  - `:latest` (current) HAS working mmbert but REMOVED the `algorithm.type: session_aware`
+#    surface this demo's config uses — it was renamed to `global.router.learning.protection`
+#    on 2026-06-20 (commit cf757016, PR #2237). `:latest` rejects our config with exactly
+#    that error.
+#  - Commit 8000843c (2026-06-17) sits between: it auto-downloads mmbert AND still accepts
+#    `session_aware` (3 days before the rename). The setup script pulls the matching base
+#    values.yaml from the same commit.
+#
+# DO NOT bump past 2026-06-20 without migrating this demo's config to the
+# learning.protection surface (tracked in repo issue #1).
+#
+# Apply as the LAST -f overlay so it wins.
+image:
+  repository: ghcr.io/vllm-project/semantic-router/extproc
+  tag: 8000843cc8de0b7195318998225a14caa43c314d
+  pullPolicy: IfNotPresent

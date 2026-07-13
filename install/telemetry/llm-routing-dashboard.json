@@ -1,0 +1,132 @@
+{
+  "uid": "llm-routing-agw-sr",
+  "title": "LLM Routing — agentgateway + Semantic Router",
+  "tags": ["agentgateway", "semantic-router", "llm", "demo"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "10s",
+  "time": { "from": "now-30m", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    { "id": 1, "type": "row", "title": "Overview", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 } },
+
+    { "id": 2, "type": "stat", "title": "LLM requests", "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 5, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "steps": [ { "color": "blue", "value": null } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(agentgateway_requests_total{protocol=\"llm\"})" } ] },
+
+    { "id": 3, "type": "stat", "title": "Spend (USD)", "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 5, "x": 5, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 4, "color": { "mode": "thresholds" }, "thresholds": { "steps": [ { "color": "green", "value": null } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(llm_model_cost_total)" } ] },
+
+    { "id": 4, "type": "stat", "title": "Total tokens", "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 5, "x": 10, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "steps": [ { "color": "purple", "value": null } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(agentgateway_gen_ai_client_token_usage_sum)" } ] },
+
+    { "id": 5, "type": "stat", "title": "Errors (non-200)", "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 5, "x": 15, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(agentgateway_requests_total{protocol=\"llm\",status!=\"200\"}) or vector(0)" } ] },
+
+    { "id": 6, "type": "stat", "title": "Models used", "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "steps": [ { "color": "blue", "value": null } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "count(count by (model) (llm_model_requests_total))" } ] },
+
+    { "id": 10, "type": "row", "title": "Routing decisions — Semantic Router", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 } },
+
+    { "id": 11, "type": "timeseries", "title": "Request rate by selected model", "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 20, "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "lastNotNull"] } },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (model) (rate(llm_model_requests_total[$__rate_interval]))", "legendFormat": "{{model}}" } ] },
+
+    { "id": 12, "type": "piechart", "title": "Selected-model share (cumulative)", "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "values": ["value", "percent"] }, "pieType": "donut", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (model) (llm_model_requests_total)", "legendFormat": "{{model}}" } ] },
+
+    { "id": 13, "type": "timeseries", "title": "Session model switches from→to  (populates when session-aware pins & upgrades)", "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "bars", "fillOpacity": 60 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["sum"] } },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (from_model,to_model) (increase(llm_session_model_transitions_total[$__rate_interval]))", "legendFormat": "{{from_model}} → {{to_model}}" } ] },
+
+    { "id": 14, "type": "timeseries", "title": "Switch-gate decisions (stay vs switch)", "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "bars", "fillOpacity": 60, "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["sum"] } },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (reason,enforced_stay) (increase(llm_model_switch_gate_decisions_total[$__rate_interval]))", "legendFormat": "{{reason}} (stay={{enforced_stay}})" } ] },
+
+    { "id": 20, "type": "row", "title": "Cost & tokens", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 } },
+
+    { "id": 21, "type": "timeseries", "title": "Spend rate by model", "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 23 },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 6, "custom": { "drawStyle": "line", "fillOpacity": 20, "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "lastNotNull"] } },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (model) (rate(llm_model_cost_total[$__rate_interval]))", "legendFormat": "{{model}}" } ] },
+
+    { "id": 22, "type": "bargauge", "title": "Cumulative spend by model", "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 5, "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "options": { "displayMode": "gradient", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (model) (llm_model_cost_total)", "legendFormat": "{{model}}" } ] },
+
+    { "id": 23, "type": "timeseries", "title": "Token throughput by model & type", "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 31 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 20, "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean"] } },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (gen_ai_request_model,gen_ai_token_type) (rate(agentgateway_gen_ai_client_token_usage_sum[$__rate_interval]))", "legendFormat": "{{gen_ai_request_model}} / {{gen_ai_token_type}}" } ] },
+
+    { "id": 24, "type": "timeseries", "title": "Cached input tokens (prompt-cache reads)", "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 31 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 30 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "lastNotNull"] } },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (gen_ai_request_model) (rate(agentgateway_gen_ai_client_token_usage_sum{gen_ai_token_type=\"input_cache_read\"}[$__rate_interval]))", "legendFormat": "{{gen_ai_request_model}}" } ] },
+
+    { "id": 30, "type": "row", "title": "Latency — agentgateway data plane", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 39 } },
+
+    { "id": 31, "type": "timeseries", "title": "LLM request duration p95 by model", "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 40 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"] } },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "histogram_quantile(0.95, sum by (le,gen_ai_request_model) (rate(agentgateway_gen_ai_server_request_duration_bucket[$__rate_interval])))", "legendFormat": "p95 {{gen_ai_request_model}}" } ] },
+
+    { "id": 32, "type": "timeseries", "title": "Gateway HTTP request duration", "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 40 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"] } },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "histogram_quantile(0.50, sum by (le) (rate(agentgateway_request_duration_seconds_bucket[$__rate_interval])))", "legendFormat": "p50" },
+        { "refId": "B", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "histogram_quantile(0.95, sum by (le) (rate(agentgateway_request_duration_seconds_bucket[$__rate_interval])))", "legendFormat": "p95" }
+      ] },
+
+    { "id": 40, "type": "row", "title": "Traffic & router internals", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 48 } },
+
+    { "id": 41, "type": "timeseries", "title": "Request rate by backend & status", "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 49 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 20, "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "lastNotNull"] } },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (backend,status) (rate(agentgateway_requests_total{protocol=\"llm\"}[$__rate_interval]))", "legendFormat": "{{backend}} [{{status}}]" } ] },
+
+    { "id": 42, "type": "timeseries", "title": "Semantic Router selection overhead p95", "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 49 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"] } },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "histogram_quantile(0.95, sum by (le) (rate(llm_model_routing_latency_seconds_bucket[$__rate_interval])))", "legendFormat": "routing p95" },
+        { "refId": "B", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "histogram_quantile(0.95, sum by (le) (rate(llm_model_selection_duration_seconds_bucket[$__rate_interval])))", "legendFormat": "selection p95" }
+      ] }
+  ]
+}

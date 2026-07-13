@@ -21,8 +21,12 @@
 # backendRef.name nor the setup script's `kubectl wait deployment/model-tier-router`.
 fullnameOverride: model-tier-router
 
+# NOTE: the SR chart does NOT render spec.strategy, so this block is IGNORED by Helm — it
+# documents intent only. Recreate is actually enforced by a `kubectl patch` in
+# setup-model-tier-router.sh (needed on a single node so an upgrade doesn't deadlock trying
+# to surge a 2nd 2Gi pod). Keep the two in sync.
 strategy:
-  type: Recreate                 # single-node demo: kill old pod before new
+  type: Recreate                 # single-node demo: kill old pod before new (enforced via kubectl patch)
 resources:
   requests: { cpu: 500m, memory: 2Gi }
   limits:   { cpu: 1,    memory: 3Gi }

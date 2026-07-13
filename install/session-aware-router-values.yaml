@@ -1,0 +1,167 @@
+# vLLM Semantic Router values for the SESSION-AWARE routing use-case.
+#
+# Demonstrates upstream session-aware model switching (issue #1753, shipped in PR #1974,
+# v0.3.0). Unlike the stateless model-tier-router (which re-selects per request), this
+# config makes the router carry per-session state and apply a "stay-vs-switch" policy:
+# it PINS the turn-1 model for a conversation and only upgrades mid-session when the task
+# crosses into a harder complexity class (decision drift).
+#
+# This is a Helm OVERLAY applied ON TOP of the upstream agentgateway values.yaml
+# (see setup-session-aware-router.sh). Helm deep-merges: map keys merge, list values
+# REPLACE — so the blocks below replace providers.models + routing.{decisions,modelCards}
+# and ADD routing.signals.complexity.
+#
+# VERSION: pinned to the 2026-06-17 build / commit 8000843c (session-aware-router-pin-values.yaml).
+# The `session_aware` algorithm.type is the config surface for that build. NOTE: the v0.3.0
+# release image (2026-06-05) can't load the `mmbert` embedding model this file's complexity
+# signal needs (fatal "mmbert (status: -1)"), which is why we use the later June-17 build.
+# SR renamed `session_aware` to `global.router.learning.adaptations.session_aware` on
+# 2026-06-20 (commit cf757016, PR #2237) — do NOT bump the image past that date without
+# migrating this file. See the workspace reference doc `session-aware-routing-feature.md`.
+
+# Force the Service/Deployment name to exactly `session-aware-router` so it matches the
+# ExtProc policy backendRef and the setup script's `kubectl wait`.
+fullnameOverride: session-aware-router
+
+# NOTE: the SR chart does NOT render spec.strategy, so this block is IGNORED by Helm — it
+# documents intent only. Recreate is actually enforced by a `kubectl patch` in
+# setup-session-aware-router.sh (needed on a single node so an upgrade doesn't deadlock
+# trying to surge a 2nd 2Gi pod). Keep the two in sync.
+strategy:
+  type: Recreate                 # single-node demo: kill old pod before new (enforced via kubectl patch)
+resources:
+  requests: { cpu: 500m, memory: 2Gi }
+  limits:   { cpu: 1,    memory: 3Gi }
+
+config:
+  version: v0.3
+  providers:
+    defaults:
+      default_model: gemini-2.5-flash-lite
+    # Pricing-only models — backend_refs omitted (SR is a pure ExtProc classifier;
+    # agentgateway makes the upstream call). `name` must equal the real provider model id.
+    # Prices are ILLUSTRATIVE — set from current OpenAI/Gemini list prices.
+    models:
+      - name: gemini-2.5-flash-lite
+        pricing: { currency: USD, prompt_per_1m: 0.10, completion_per_1m: 0.40 }
+      - name: gemini-2.5-flash
+        pricing: { currency: USD, prompt_per_1m: 0.30, completion_per_1m: 2.50 }
+      - name: gpt-4o-mini
+        pricing: { currency: USD, prompt_per_1m: 0.15, completion_per_1m: 0.60 }
+      - name: gpt-4o
+        pricing: { currency: USD, prompt_per_1m: 2.50, completion_per_1m: 10.00 }
+      - name: gpt-4.1
+        pricing: { currency: USD, prompt_per_1m: 2.00, completion_per_1m: 8.00 }
+
+  routing:
+    modelCards:
+      - { name: gemini-2.5-flash-lite }
+      - { name: gemini-2.5-flash }
+      - { name: gpt-4o-mini }
+      - { name: gpt-4o }
+      - { name: gpt-4.1 }
+
+    signals:
+      # Complexity signal. Embedding-similarity contrast: margin = hard-sim − easy-sim;
+      # |margin| < threshold ⇒ "medium". Emits tier:hard / tier:medium / tier:easy.
+      #
+      # TUNED FOR THE SESSION DEMOS (pinning + upgrade), NOT copied from model-tier-router.
+      # The pinning demo's conversational prompts ("give a one-line summary of X", "rephrase
+      # this to be friendlier", "reply with one word: …", "in one short sentence, …") were
+      # landing in the MEDIUM band with the old 0.25 threshold + generic easy exemplars, so
+      # they jittered between simple_tier and medium_tier turn-to-turn. Each tier flip is a
+      # decision-drift that decision_drift_reset turns into a model switch, breaking the pin.
+      # Fix: (1) narrow the medium band (0.25 → 0.12) so these prompts resolve cleanly to
+      # easy, and (2) add easy exemplars that mirror the actual demo phrasing so easy-sim wins
+      # with margin to spare. The upgrade demo's turn-4 proof is far into tier:hard regardless.
+      complexity:
+        - name: tier
+          threshold: 0.12
+          hard:
+            candidates:
+              - "prove the theorem step by step"
+              - "prove that the square root of 2 is irrational"
+              - "design a fault-tolerant distributed system"
+              - "analyze the root cause across multiple services"
+              - "derive the optimal algorithm and its time complexity"
+          easy:
+            candidates:
+              - "what time is it"
+              - "reply with one word"
+              - "reply with one word: is this a good idea"
+              - "reply with one word: is python a programming language"
+              - "give a one-line summary"
+              - "give a one-line summary of what it does"
+              - "give a one-line summary of the main benefit"
+              - "rephrase this to be friendlier"
+              - "rephrase this sentence to be more polite"
+              - "in one short sentence, what should i read next"
+
+    # ---------------------------------------------------------------------------
+    # Decisions. Each tier uses algorithm.type: session_aware, which WRAPS a base
+    # selector (base_method: hybrid) and adds the router-owned stay-vs-switch policy.
+    #
+    # THE DEMO MECHANIC (see curl-session-upgrade-demo.sh):
+    #  - Easy turns match `simple_tier` → cheap model. session_aware PINS it: subsequent
+    #    easy turns stay on the same model (reason: stay_has_best_adjusted_score / min_turns),
+    #    NOT re-shopped every turn. This is the continuity half of the story.
+    #  - When a turn is classified tier:hard it matches `advanced_tier`, a DIFFERENT decision.
+    #    `decision_drift_reset: true` detects the task moved to a harder class, resets the
+    #    continuity penalty, and reselects from advanced_tier's candidates. The cheap model
+    #    is not an advanced candidate, so the router UPGRADES to the frontier model.
+    #    Emits llm_session_model_transitions_total{from=gemini-2.5-flash-lite,to=gpt-4.1}.
+    #  - Further hard turns then PIN the upgraded model.
+    #
+    # The `session_aware` block below is deliberately tuned to make the switch VISIBLE in a
+    # short demo (low margins). Raise switch_margin / stay_bias / prefix_cache_weight for
+    # production-realistic stickiness. Field set is from config/algorithm/selection/
+    # session-aware.yaml @ v0.3.0.
+    # ---------------------------------------------------------------------------
+    decisions:
+      - name: advanced_tier
+        description: Hard complexity — upgrade to a frontier/reasoning-class model
+        priority: 50
+        rules: { type: complexity, name: "tier:hard" }
+        modelRefs:
+          # To showcase a genuine REASONING upgrade, swap gpt-4.1 for a reasoning model
+          # (e.g. o4-mini / gpt-5 with use_reasoning: true) IF your key has quota.
+          - { model: gpt-4.1, use_reasoning: false }   # frontier
+          - { model: gpt-4o,  use_reasoning: false }
+        algorithm: &session_aware
+          type: session_aware
+          session_aware:
+            base_method: hybrid
+            idle_timeout_seconds: 300
+            min_turns_before_switch: 1     # allow an upgrade as early as turn 2
+            switch_margin: 0.02            # low → a justified upgrade clears the bar
+            stay_bias: 0.05                # low → don't over-suppress the demo switch
+            tool_loop_hard_lock: true
+            context_portability_hard_lock: true
+            decision_drift_reset: true     # THE upgrade trigger (easy→hard decision change)
+            prefix_cache_weight: 0.10
+            handoff_penalty_weight: 1.0
+            default_handoff_penalty: 0.05
+            quality_gap_multiplier: 1.0
+            max_cache_cost_multiplier: 1   # neutral (>=1 required)
+            switch_history_weight: 0.04
+            remaining_turn_prior_weight: 1.0
+            remaining_turn_prior_horizon: 8
+            min_remaining_turn_prior_samples: 3
+
+      - name: medium_tier
+        description: Medium complexity — mid model, pinned per session
+        priority: 40
+        rules: { type: complexity, name: "tier:medium" }
+        modelRefs:
+          - { model: gpt-4o-mini,     use_reasoning: false }
+          - { model: gemini-2.5-flash, use_reasoning: false }
+        algorithm: *session_aware
+
+      - name: simple_tier
+        description: Easy complexity (turn-1 default for the demo) — cheap model, pinned per session
+        priority: 30
+        rules: { type: complexity, name: "tier:easy" }
+        modelRefs:
+          - { model: gemini-2.5-flash-lite, use_reasoning: false }   # cheapest — the pinned start
+          - { model: gpt-4o-mini,           use_reasoning: false }
+        algorithm: *session_aware

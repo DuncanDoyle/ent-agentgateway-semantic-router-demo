@@ -1,0 +1,41 @@
+# Helm values overlay — enables OTEL tracing in the session-aware-router Semantic Router
+# release.
+#
+# Apply on top of the base values AND the session-aware-router overlay:
+#   helm upgrade session-aware-router ... \
+#     -f <upstream values.yaml @ commit 8000843c> \
+#     -f session-aware-router-values.yaml \
+#     -f session-aware-router-tracing-values.yaml \
+#     -f session-aware-router-pin-values.yaml
+#
+# Like model-tier-router-tracing-values.yaml this file carries ONLY the tracing config —
+# reduced resource requests come from session-aware-router-values.yaml, and the Recreate
+# strategy is enforced by setup-session-aware-router.sh's kubectl patch (the chart ignores
+# the values-file `strategy`), so there is no need to repeat them here.
+#
+# service_name is set to 'session-aware-router' so its spans are distinguishable from the
+# other Semantic Router releases in Grafana/Tempo.
+#
+# NOTE (known limitation): SR OTEL spans currently do not reach Tempo in this demo — use the
+# router's structured JSON logs (`router_replay_complete`) and the Prometheus metrics /
+# Grafana dashboard (install/telemetry/) as the reliable telemetry channel. This overlay is
+# provided for parity with the other releases and so tracing lights up if/when that is fixed.
+
+config:
+  global:
+    services:
+      observability:
+        tracing:
+          enabled: true
+          provider: opentelemetry
+          exporter:
+            type: otlp
+            endpoint: opentelemetry-collector.telemetry.svc.cluster.local:4317
+            insecure: true
+          sampling:
+            type: always_on
+            rate: 1.0
+          resource:
+            service_name: session-aware-router
+            service_version: 2026-06-17-8000843c   # the pinned June-17 build; keep in sync with session-aware-router-pin-values.yaml
+            deployment_environment: demo

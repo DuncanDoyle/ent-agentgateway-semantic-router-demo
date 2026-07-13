@@ -9,8 +9,9 @@
 #     -f semantic-router-pin-values.yaml
 #
 # Unlike semantic-router-tracing-values.yaml this file carries ONLY the tracing
-# config — strategy (Recreate) and reduced resource requests already come from
-# model-tier-router-values.yaml, so there is no need to repeat them here.
+# config — reduced resource requests come from model-tier-router-values.yaml, and the
+# Recreate strategy is enforced by setup-model-tier-router.sh's kubectl patch (the chart
+# ignores the values-file `strategy`), so there is no need to repeat them here.
 #
 # service_name is set to 'model-tier-router' so its spans are distinguishable
 # from the LoRA `semantic-router` release in Grafana/Tempo.

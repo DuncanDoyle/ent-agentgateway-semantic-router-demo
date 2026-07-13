@@ -22,6 +22,16 @@ helm upgrade --install model-tier-router oci://ghcr.io/vllm-project/charts/seman
   -f model-tier-router-values.yaml \
   -f semantic-router-pin-values.yaml
 
+# The SR chart does NOT render spec.strategy, so the deployment defaults to RollingUpdate and
+# the `strategy: Recreate` in model-tier-router-values.yaml is silently ignored. On a
+# resource-tight single node a rolling UPGRADE (e.g. enabling tracing) surges a 2nd ~2Gi pod
+# that cannot be scheduled, and the rollout deadlocks with the old pod still serving. Force
+# Recreate here: it is a no-op on the pod template (no extra restart), and persists across
+# future helm upgrades because the chart never manages this field.
+printf "\nForcing Recreate deploy strategy (chart ignores the values-file strategy) ...\n"
+kubectl patch deployment model-tier-router -n agentgateway-system --type merge \
+  -p '{"spec":{"strategy":{"type":"Recreate","rollingUpdate":null}}}'
+
 printf "\nWaiting for model-tier-router to be ready ...\n"
 kubectl wait --for=condition=Available deployment/model-tier-router \
   -n agentgateway-system --timeout=600s

@@ -1,0 +1,28 @@
+# Makes kube-prometheus-stack scrape the vLLM Semantic Router metrics (:9190).
+#
+# WHY THIS IS NEEDED: nothing scraped the SR `*-metrics` services before, so llm_* metrics
+# never reached Prometheus/Grafana. This ServiceMonitor selects BOTH SR deployments at once
+# (session-aware-router-metrics + model-tier-router-metrics) — their metrics services share
+# the labels {app: semantic-router, service: metrics} and expose the port named `metrics`.
+#
+# The `release: kube-prometheus-stack` label is not strictly required here (the Prometheus
+# CR's serviceMonitorSelector is empty = match-all) but is added to stay correct if that
+# selector is ever tightened to the Helm default.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: semantic-router
+  namespace: agentgateway-system
+  labels:
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames: [agentgateway-system]
+  selector:
+    matchLabels:
+      app: semantic-router
+      service: metrics
+  endpoints:
+    - port: metrics          # session/model-tier -router-metrics :9190
+      path: /metrics
+      interval: 15s

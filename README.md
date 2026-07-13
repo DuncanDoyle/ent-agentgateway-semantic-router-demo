@@ -6,7 +6,8 @@ A minimal demo environment for Solo Enterprise for agentgateway with two use-cas
 - **LLM consumption** — weighted 50/50 routing between OpenAI (`gpt-4o-mini`) and Gemini (`gemini-2.5-flash-lite`) at `http://api.example.com/llm`
 - **vLLM Semantic Router** — prompt classification via [vLLM Semantic Router](https://vllm-semantic-router.com/docs/installation/k8s/agentgateway/) selecting a LoRA adapter at `http://api.example.com/semantic-router`
 - **Cost-aware model-tier routing** — Semantic Router classifies each prompt by **complexity** (primary) and routes it to the **cheapest capable model** across OpenAI + Gemini at `http://api.example.com/llm-tier` (see [`docs/design-semantic-router-llm-routing.md`](docs/design-semantic-router-llm-routing.md))
-- **Observability** — end-to-end OTEL traces spanning agentgateway + Semantic Router (Signal Extraction → Decision Blocks → Plugin Chain), with Grafana / Tempo / Loki / Prometheus in the `telemetry` namespace
+- **Session-aware routing** — the same `/llm-tier` path with per-session model **pinning** plus a justified mid-session **upgrade** when the task gets harder (Semantic Router's `session_aware` selector). Setup: [`docs/design-session-aware-routing.md`](docs/design-session-aware-routing.md); how it works: [`docs/session-awareness-explained.md`](docs/session-awareness-explained.md)
+- **Observability** — Grafana / Tempo / Loki / Prometheus in the `telemetry` namespace: end-to-end OTEL traces (agentgateway + Semantic Router: Signal Extraction → Decision Blocks → Plugin Chain) **and** an LLM-routing metrics dashboard (cost, token usage incl. prompt-cache reads, per-model latency, routing decisions)
 
 ## Prerequisites
 
@@ -69,15 +70,16 @@ The OTEL setup is split into a router-agnostic stack script and a per-router tra
 This installs the full OTEL stack in the `telemetry` namespace and enables tracing in agentgateway:
 - **Tempo** — trace storage (OTLP gRPC on port 4317)
 - **Loki** — log storage
-- **Prometheus + Grafana** (`kube-prometheus-stack`) — metrics and dashboards, pre-configured with Prometheus/Tempo/Loki datasources
+- **Prometheus + Grafana** (`kube-prometheus-stack`) — pre-configured with Prometheus/Tempo/Loki datasources (the LLM-routing metric scraping + dashboard are added in Step 5b)
 - **OTEL Collector** — central receiver forwarding traces to Tempo and logs to Loki
 - `EnterpriseAgentgatewayPolicy` — instructs agentgateway to emit OTLP traces to the collector
 
 Then enable tracing in whichever Semantic Router release you are running (upgrades the Helm release to point at the same collector):
 
 ```bash
-./setup-otel-semantic-router.sh     # LoRA use-case, release `semantic-router`   (service: vllm-semantic-router)
-./setup-otel-model-tier-router.sh   # cost-aware tier router, release `model-tier-router` (service: model-tier-router)
+./setup-otel-semantic-router.sh      # LoRA use-case, release `semantic-router`   (service: vllm-semantic-router)
+./setup-otel-model-tier-router.sh    # cost-aware tier router, release `model-tier-router` (service: model-tier-router)
+./setup-otel-session-aware-router.sh # session-aware routing, release `session-aware-router` (service: session-aware-router)
 ```
 
 Access Grafana after port-forwarding:
@@ -87,6 +89,16 @@ kubectl -n telemetry port-forward svc/kube-prometheus-stack-grafana 3000:80
 ```
 
 Traces in Tempo show end-to-end spans: agentgateway request handling → Semantic Router Signal Extraction → Decision Blocks → Plugin Chain → vLLM.
+
+### Step 5b — Install the LLM-routing metrics dashboard
+
+Nothing scrapes the Semantic Router (`:9190`) or agentgateway proxy (`:15020`) metrics out of the box. This step adds the scrape config and a Grafana dashboard (from `install/`):
+
+```bash
+./telemetry/setup-telemetry-dashboards.sh
+```
+
+It applies a **ServiceMonitor** (both Semantic Router releases, `:9190`), a **PodMonitor** (the agentgateway proxy `:15020`, incl. OTel GenAI token/latency metrics), and the **LLM Routing — agentgateway + Semantic Router** dashboard (uid `llm-routing-agw-sr`), which the Grafana sidecar auto-imports. Panels cover request rate & selected-model share, spend and token usage per model (incl. prompt-cache reads), per-model latency, and — for the session-aware use-case — model-switch / stay-vs-switch decisions. Generate traffic (the `curl-*` scripts) for the panels to fill in.
 
 ### Step 6 — Deploy the LLM consumption use-case
 
@@ -201,7 +213,12 @@ agentgateway-demo-2/
 │   ├── install-agentgateway-with-helm.sh   # Installs agentgateway via Helm
 │   ├── agentgateway-helm-values.yaml        # Helm values
 │   ├── setup.sh                             # Deploys ingress use-case resources
-│   └── setup-llm.sh                         # Creates API key secrets + deploys LLM resources
+│   ├── setup-llm.sh                         # Creates API key secrets + deploys LLM resources
+│   └── telemetry/                           # Metrics scraping + Grafana dashboard (see Step 5b)
+│       ├── setup-telemetry-dashboards.sh    # Applies the monitors + dashboard ConfigMap
+│       ├── servicemonitor-semantic-router.yaml  # Scrape Semantic Router :9190
+│       ├── podmonitor-agentgateway.yaml     # Scrape agentgateway proxy :15020
+│       └── llm-routing-dashboard.json       # Grafana dashboard model
 ├── gateways/
 │   ├── gw-parameters.yaml                   # EnterpriseAgentgatewayParameters
 │   └── gw.yaml                              # Gateway (enterprise-agentgateway class)
