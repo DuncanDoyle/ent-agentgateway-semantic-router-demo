@@ -1,0 +1,4 @@
+# Private, local-only notes — never published to the repo.
+# Use the `.local.md` suffix for any working notes/analysis you want to keep beside
+# the docs but out of version control.
+*.local.md
